@@ -68,6 +68,7 @@ type PESection struct {
 	NumberOfLinenumbers  int16
 	Characteristics      int32
 }
+
 type PEDebugDirectory struct {
 	Characteristics  int32
 	TimeDateStamp    int32
@@ -77,6 +78,12 @@ type PEDebugDirectory struct {
 	SizeOfData       int32
 	AddressOfRawData int32
 	PointerToRawData int32
+}
+
+type RSDSHeader struct {
+	Signature     int32      // 0x00-0x04 0x53445352
+	GUID          [0x10]byte // 0x04-0x14
+	TimeDateStamp int32      // 0x14-0x18
 }
 
 func read_debug_info(file *os.File) debug_info {
@@ -122,8 +129,9 @@ func read_debug_info(file *os.File) debug_info {
 		}
 	}
 
+	rsds_offset := int64(0)
 	if debug_dir_offest > 0 {
-		file.Seek(int64(debug_dir_offest), 0)
+		file.Seek(debug_dir_offest, 0)
 		var debug_dir PEDebugDirectory
 		fmt.Printf("IMAGE_DEBUG_DIRECTORY offset: %X (%d)\n", debug_dir_offest, binary.Size(&debug_dir))
 		for i := 0; i < int(debug_rva.VirtualSize)/binary.Size(&debug_dir); i++ {
@@ -131,14 +139,29 @@ func read_debug_info(file *os.File) debug_info {
 			fmt.Printf("   %d: %d\n", i, debug_dir.Type)
 			if debug_dir.Type == 2 {
 				fmt.Printf("RSDS offset: %X\n", debug_dir.PointerToRawData)
+				rsds_offset = int64(debug_dir.PointerToRawData)
 				break
 			}
 		}
 	}
 
+	var rsds RSDSHeader
+	if rsds_offset > 0 {
+		file.Seek(rsds_offset, 0)
+		binary.Read(file, binary.LittleEndian, &rsds)
+	}
+
+	fmt.Printf("RSDS signature: %08X\n", rsds.Signature)
+	fmt.Printf("RSDS timestamp: %08X\n", rsds.TimeDateStamp)
+
 	return debug_info{
 		fmt.Sprintf("%X%x", pe.TimeDateStamp, pe.SizeOfImage),
-		"debug",
+		fmt.Sprintf("%02X%02X%02X%02X%02X%02X%02X%02X%16X%d",
+			rsds.GUID[3], rsds.GUID[2], rsds.GUID[1], rsds.GUID[0],
+			rsds.GUID[5], rsds.GUID[4],
+			rsds.GUID[7], rsds.GUID[6],
+			rsds.GUID[8:],
+			rsds.TimeDateStamp),
 	}
 }
 
@@ -146,4 +169,5 @@ func main() {
 	file, _ := os.Open("sample/hello.exe")
 	info := read_debug_info(file)
 	fmt.Printf("Code ID: %s\n", info.CodeId)
+	fmt.Printf("Debug ID: %s\n", info.DebugId)
 }
