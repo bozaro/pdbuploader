@@ -1,0 +1,2 @@
+hello.exe/56D047B12e000/hello.exe
+hello.pdb/B3963800A43840D28914331E6B93FE021/hello.pdb
