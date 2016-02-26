@@ -1,3 +1,4 @@
+// https://rsdn.ru/article/baseserv/pe_coff.xml
 package main
 
 import (
@@ -15,6 +16,11 @@ type MZHeader struct {
 	Signature int16      // 0x00-0x02 0x5A4D
 	Unused    [0x3A]byte // 0x02-0x3C
 	PEOffset  int32      // 0x3C-0x40
+}
+
+type RvaAndSize struct {
+	VirtualAddress int32
+	VirtualSize    int32
 }
 
 type PEHeader struct {
@@ -50,6 +56,29 @@ type PEHeader struct {
 	NumberOfRvaAndSizes         int32      // 0x74-0x78
 }
 
+type PESection struct {
+	Name                 [0x08]byte
+	VirtualSize          int32
+	VirtualAddress       int32
+	SizeOfRawData        int32
+	PointerToRawData     int32
+	PointerToRelocations int32
+	PointerToLinenumbers int32
+	NumberOfRelocations  int16
+	NumberOfLinenumbers  int16
+	Characteristics      int32
+}
+type PEDebugDirectory struct {
+	Characteristics  int32
+	TimeDateStamp    int32
+	MajorVersion     int16
+	MinorVersion     int16
+	Type             int32
+	SizeOfData       int32
+	AddressOfRawData int32
+	PointerToRawData int32
+}
+
 func read_debug_info(file *os.File) debug_info {
 	var mz MZHeader
 	var pe PEHeader
@@ -64,6 +93,48 @@ func read_debug_info(file *os.File) debug_info {
 	fmt.Printf("PE signature: %08X\n", pe.Signature)
 	fmt.Printf("PE timestamp: %08X\n", pe.TimeDateStamp)
 	fmt.Printf("PE image size: %08X\n", pe.SizeOfImage)
+
+	fmt.Printf("Sections count: %d\n", pe.NumberOfSections)
+	fmt.Printf("Sections alignment: %d\n", pe.SectionAlignment)
+	fmt.Printf("Size of headers: %d\n", pe.SizeOfHeaders)
+
+	var debug_rva RvaAndSize
+	if pe.NumberOfRvaAndSizes < 7 {
+		// todo: opss...
+		fmt.Println("OPS....")
+	}
+	for i := 0; i < 7; i++ {
+		binary.Read(file, binary.LittleEndian, &debug_rva)
+	}
+
+	file.Seek(int64(mz.PEOffset)+int64(pe.SizeOfOptionalHeader)+0x18, 0)
+
+	fmt.Printf("Section offset: %08X\n", int64(mz.PEOffset)+int64(pe.SizeOfOptionalHeader)+0x18)
+	rdata := [8]byte{'.', 'r', 'd', 'a', 't', 'a'}
+	debug_dir_offest := int64(0)
+	for i := int16(0); i < pe.NumberOfSections; i++ {
+		var section PESection
+		binary.Read(file, binary.LittleEndian, &section)
+		fmt.Printf("%d: %s\n", i, section.Name)
+		if section.Name == rdata {
+			debug_dir_offest = int64(section.PointerToRawData + debug_rva.VirtualAddress - section.VirtualAddress)
+			break
+		}
+	}
+
+	if debug_dir_offest > 0 {
+		file.Seek(int64(debug_dir_offest), 0)
+		var debug_dir PEDebugDirectory
+		fmt.Printf("IMAGE_DEBUG_DIRECTORY offset: %X (%d)\n", debug_dir_offest, binary.Size(&debug_dir))
+		for i := 0; i < int(debug_rva.VirtualSize)/binary.Size(&debug_dir); i++ {
+			binary.Read(file, binary.LittleEndian, &debug_dir)
+			fmt.Printf("   %d: %d\n", i, debug_dir.Type)
+			if debug_dir.Type == 2 {
+				fmt.Printf("RSDS offset: %X\n", debug_dir.PointerToRawData)
+				break
+			}
+		}
+	}
 
 	return debug_info{
 		fmt.Sprintf("%X%x", pe.TimeDateStamp, pe.SizeOfImage),
