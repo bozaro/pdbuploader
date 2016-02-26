@@ -1,4 +1,5 @@
 // https://rsdn.ru/article/baseserv/pe_coff.xml
+// http://www.godevtool.com/Other/pdb.htm
 package main
 
 import (
@@ -7,7 +8,7 @@ import (
 	"os"
 )
 
-type debug_info struct {
+type DebugInfo struct {
 	CodeId  string
 	DebugId string
 }
@@ -86,7 +87,35 @@ type RSDSHeader struct {
 	TimeDateStamp int32      // 0x14-0x18
 }
 
-func read_debug_info(file *os.File) debug_info {
+type PDBHeader struct {
+	Description          [0x20]byte // 0x00-0x20
+	PageSize             int32      // 0x20-0x24
+	Unknown1             int32      // 0x24-0x28 0x00000002
+	NumberOfPages        int32      // 0x28-0x2C
+	StreamDirectoryBytes int32      // 0x2C-0x30
+	Unknown2             int32      // 0x30-0x34 0x00000000
+	StreamDirectoryPage  int32      // 0x34-0x38
+}
+
+func read_pdb_debug_id(file *os.File) string {
+	var pdb PDBHeader
+	binary.Read(file, binary.LittleEndian, &pdb)
+	fmt.Printf("PDB signature: %s\n", pdb.Description)
+	stream_dirs_offset := int64(pdb.StreamDirectoryPage) * int64(pdb.PageSize)
+	fmt.Printf("Stream directory list offset: %08X (%d)\n", stream_dirs_offset, pdb.NumberOfPages)
+
+	file.Seek(stream_dirs_offset, 0)
+	var stream_dir_page int32
+	binary.Read(file, binary.LittleEndian, &stream_dir_page)
+
+	stream_dir := int64(stream_dir_page) * int64(pdb.PageSize)
+	fmt.Printf("Stream directory offset: %08X\n", stream_dir)
+	file.Seek(stream_dir, 0)
+
+	return ""
+}
+
+func read_exe_debug_info(file *os.File) DebugInfo {
 	var mz MZHeader
 	var pe PEHeader
 	binary.Read(file, binary.LittleEndian, &mz)
@@ -154,7 +183,7 @@ func read_debug_info(file *os.File) debug_info {
 	fmt.Printf("RSDS signature: %08X\n", rsds.Signature)
 	fmt.Printf("RSDS timestamp: %08X\n", rsds.TimeDateStamp)
 
-	return debug_info{
+	return DebugInfo{
 		fmt.Sprintf("%X%x", pe.TimeDateStamp, pe.SizeOfImage),
 		fmt.Sprintf("%02X%02X%02X%02X%02X%02X%02X%02X%16X%d",
 			rsds.GUID[3], rsds.GUID[2], rsds.GUID[1], rsds.GUID[0],
@@ -167,7 +196,12 @@ func read_debug_info(file *os.File) debug_info {
 
 func main() {
 	file, _ := os.Open("sample/hello.exe")
-	info := read_debug_info(file)
-	fmt.Printf("Code ID: %s\n", info.CodeId)
-	fmt.Printf("Debug ID: %s\n", info.DebugId)
+	info := read_exe_debug_info(file)
+	file, _ = os.Open("sample/hello.pdb")
+	debug_id := read_pdb_debug_id(file)
+	fmt.Println("EXE")
+	fmt.Printf("  Code ID: %s\n", info.CodeId)
+	fmt.Printf("  Debug ID: %s\n", info.DebugId)
+	fmt.Println("PDB")
+	fmt.Printf("  Debug ID: %s\n", debug_id)
 }
