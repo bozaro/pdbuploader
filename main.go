@@ -9,8 +9,9 @@ import (
 )
 
 type DebugInfo struct {
-	CodeId  string
-	DebugId string
+	CodeId      string
+	DebugId     string
+	PDBFileName string
 }
 
 type MZHeader struct {
@@ -82,9 +83,10 @@ type PEDebugDirectory struct {
 }
 
 type RSDSHeader struct {
-	Signature     int32      // 0x00-0x04 0x53445352
-	GUID          [0x10]byte // 0x04-0x14
-	TimeDateStamp int32      // 0x14-0x18
+	Signature     int32       // 0x00-0x04 0x53445352
+	GUID          [0x10]byte  // 0x04-0x14
+	TimeDateStamp int32       // 0x14-0x18
+	PDBFileName   [0x104]byte // 0x18-0x11C
 }
 
 type PDBHeader struct {
@@ -102,6 +104,17 @@ type PDBAuthStream struct {
 	Unknown       int32      // 0x04-0x08
 	TimeDateStamp int32      // 0x08-0x0C
 	GUID          [0x10]byte // 0x0C-0x1C
+}
+
+func CToGoString(c []byte) string {
+	n := -1
+	for i, b := range c {
+		if b == 0 {
+			break
+		}
+		n = i
+	}
+	return string(c[:n+1])
 }
 
 func guid_to_string(guid [0x10]byte) string {
@@ -215,6 +228,7 @@ func read_exe_debug_info(file *os.File) DebugInfo {
 	return DebugInfo{
 		fmt.Sprintf("%X%x", pe.TimeDateStamp, pe.SizeOfImage),
 		fmt.Sprintf("%s%d", guid_to_string(rsds.GUID), rsds.TimeDateStamp),
+		CToGoString(rsds.PDBFileName[:]),
 	}
 }
 
@@ -226,6 +240,7 @@ func main() {
 	fmt.Println("EXE")
 	fmt.Printf("  Code ID: %s\n", info.CodeId)
 	fmt.Printf("  Debug ID: %s\n", info.DebugId)
+	fmt.Printf("  PDB: %s\n", info.PDBFileName)
 	fmt.Println("PDB")
 	fmt.Printf("  Debug ID: %s\n", debug_id)
 }
