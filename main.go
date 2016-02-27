@@ -175,13 +175,11 @@ func read_exe_debug_info(file *os.File) DebugInfo {
 	file.Seek(int64(mz.PEOffset)+int64(pe.SizeOfOptionalHeader)+0x18, 0)
 
 	fmt.Printf("Section offset: %08X\n", int64(mz.PEOffset)+int64(pe.SizeOfOptionalHeader)+0x18)
-	rdata := [8]byte{'.', 'r', 'd', 'a', 't', 'a'}
 	debug_dir_offest := int64(0)
 	for i := int16(0); i < pe.NumberOfSections; i++ {
 		var section PESection
 		binary.Read(file, binary.LittleEndian, &section)
-		fmt.Printf("%d: %s\n", i, section.Name)
-		if section.Name == rdata {
+		if (section.VirtualAddress <= debug_rva.VirtualAddress) && (section.VirtualAddress+section.VirtualSize > debug_rva.VirtualAddress) {
 			debug_dir_offest = int64(section.PointerToRawData + debug_rva.VirtualAddress - section.VirtualAddress)
 			break
 		}
