@@ -132,7 +132,9 @@ func read_pdb_debug_id(file *os.File) string {
 	fmt.Printf("Streams count: %08X\n", stream_count)
 
 	var size int32
-	file.Seek(int64(stream_count+1)*int64(binary.Size(&size)), 1)
+	file.Seek(int64(stream_count)*int64(binary.Size(&size)), 1)
+	var offset int32
+	file.Seek(int64(1)*int64(binary.Size(&offset)), 1)
 
 	var stream_offset int32
 	binary.Read(file, binary.LittleEndian, &stream_offset)
