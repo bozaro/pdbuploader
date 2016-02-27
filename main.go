@@ -97,6 +97,21 @@ type PDBHeader struct {
 	StreamDirectoryPage  int32      // 0x34-0x38
 }
 
+type PDBAuthStream struct {
+	Signature     int32      // 0x00-0x04 0x01312E94
+	Unknown       int32      // 0x04-0x08
+	TimeDateStamp int32      // 0x08-0x0C
+	GUID          [0x10]byte // 0x0C-0x1C
+}
+
+func guid_to_string(guid [0x10]byte) string {
+	return fmt.Sprintf("%02X%02X%02X%02X%02X%02X%02X%02X%16X",
+		guid[3], guid[2], guid[1], guid[0],
+		guid[5], guid[4],
+		guid[7], guid[6],
+		guid[8:])
+}
+
 func read_pdb_debug_id(file *os.File) string {
 	var pdb PDBHeader
 	binary.Read(file, binary.LittleEndian, &pdb)
@@ -112,7 +127,21 @@ func read_pdb_debug_id(file *os.File) string {
 	fmt.Printf("Stream directory offset: %08X\n", stream_dir)
 	file.Seek(stream_dir, 0)
 
-	return ""
+	var stream_count int32
+	binary.Read(file, binary.LittleEndian, &stream_count)
+	fmt.Printf("Streams count: %08X\n", stream_count)
+
+	var size int32
+	file.Seek(int64(stream_count+1)*int64(binary.Size(&size)), 1)
+
+	var stream_offset int32
+	binary.Read(file, binary.LittleEndian, &stream_offset)
+	file.Seek(int64(stream_offset)*int64(pdb.PageSize), 0)
+
+	var auth PDBAuthStream
+	binary.Read(file, binary.LittleEndian, &auth)
+
+	return fmt.Sprintf("%s%d", guid_to_string(auth.GUID), auth.TimeDateStamp)
 }
 
 func read_exe_debug_info(file *os.File) DebugInfo {
@@ -185,12 +214,7 @@ func read_exe_debug_info(file *os.File) DebugInfo {
 
 	return DebugInfo{
 		fmt.Sprintf("%X%x", pe.TimeDateStamp, pe.SizeOfImage),
-		fmt.Sprintf("%02X%02X%02X%02X%02X%02X%02X%02X%16X%d",
-			rsds.GUID[3], rsds.GUID[2], rsds.GUID[1], rsds.GUID[0],
-			rsds.GUID[5], rsds.GUID[4],
-			rsds.GUID[7], rsds.GUID[6],
-			rsds.GUID[8:],
-			rsds.TimeDateStamp),
+		fmt.Sprintf("%s%d", guid_to_string(rsds.GUID), rsds.TimeDateStamp),
 	}
 }
 
