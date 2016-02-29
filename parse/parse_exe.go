@@ -1,17 +1,18 @@
-package pdbuploader
+package parse
 
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"os"
 )
 
-const mzHeaderSignature int16 = 0x5A4D
-const peHeaderSignature int32 = 0x00004550
-const rsdsHeaderSignature int32 = 0x53445352
-const imageDirectoryEntryDebug int32 = 6
-const imageDebugTypeCodeview int32 = 2
+const (
+	mzHeaderSignature           int16 = 0x5A4D
+	peHeaderSignature           int32 = 0x00004550
+	rsdsHeaderSignature         int32 = 0x53445352
+	IMAGE_DIRECTORY_ENTRY_DEBUG int32 = 6
+	IMAGE_DEBUG_TYPE_CODEVIEW   int32 = 2
+)
 
 type mzHeader struct {
 	Signature int16      // 0x00-0x02 mzHeaderSignature
@@ -83,7 +84,7 @@ type peDebugDirectory struct {
 
 type rsdsHeader struct {
 	Signature     int32       // 0x00-0x04 rsdsHeaderSignature
-	GUID          [0x10]byte  // 0x04-0x14
+	Guid          [0x10]byte  // 0x04-0x14
 	TimeDateStamp int32       // 0x14-0x18
 	PDBFileName   [0x104]byte // 0x18-0x11C
 }
@@ -110,11 +111,11 @@ func ParseExe(file *os.File) (*DebugInfo, error) {
 		return nil, errors.New("Invalid PE header signature")
 	}
 
-	if pe.NumberOfRvaAndSizes < imageDirectoryEntryDebug {
+	if pe.NumberOfRvaAndSizes < IMAGE_DIRECTORY_ENTRY_DEBUG {
 		return nil, errors.New("Debug information not found in RVA table")
 	}
 	// Skip RVA entries before IMAGE_DIRECTORY_ENTRY_DEBUG
-	for i := int32(0); i < imageDirectoryEntryDebug; i++ {
+	for i := int32(0); i < IMAGE_DIRECTORY_ENTRY_DEBUG; i++ {
 		var skip_rva rvaAndSize
 		if err := binary.Read(file, binary.LittleEndian, &skip_rva); err != nil {
 			return nil, err
@@ -156,7 +157,7 @@ func ParseExe(file *os.File) (*DebugInfo, error) {
 		if err := binary.Read(file, binary.LittleEndian, &debug_dir); err != nil {
 			return nil, err
 		}
-		if debug_dir.Type == imageDebugTypeCodeview {
+		if debug_dir.Type == IMAGE_DEBUG_TYPE_CODEVIEW {
 			rsds_offset = int64(debug_dir.PointerToRawData)
 			break
 		}
@@ -178,8 +179,16 @@ func ParseExe(file *os.File) (*DebugInfo, error) {
 	}
 
 	return &DebugInfo{
-		fmt.Sprintf("%X%x", pe.TimeDateStamp, pe.SizeOfImage),
-		fmt.Sprintf("%s%d", guid_to_string(rsds.GUID), rsds.TimeDateStamp),
+		CodeId{
+			pe.TimeDateStamp,
+			pe.SizeOfImage,
+		},
+		DebugId{
+			Guid{
+				rsds.Guid,
+			},
+			int(rsds.TimeDateStamp),
+		},
 		CToGoString(rsds.PDBFileName[:]),
 	}, nil
 }
