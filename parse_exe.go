@@ -1,4 +1,4 @@
-package main
+package pdbuploader
 
 import (
 	"encoding/binary"

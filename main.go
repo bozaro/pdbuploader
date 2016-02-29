@@ -1,6 +1,6 @@
 // https://rsdn.ru/article/baseserv/pe_coff.xml
 // http://www.godevtool.com/Other/pdb.htm
-package main
+package pdbuploader
 
 import (
 	"fmt"
