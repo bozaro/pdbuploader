@@ -1,5 +1,3 @@
-// https://rsdn.ru/article/baseserv/pe_coff.xml
-// http://www.godevtool.com/Other/pdb.htm
 package main
 
 import (
@@ -28,7 +26,7 @@ type pdbAuthStream struct {
 	GUID          [0x10]byte // 0x0C-0x1C
 }
 
-func ReadPDB(file *os.File) (string, error) {
+func ParsePdb(file *os.File) (string, error) {
 	var pdb pdbHeader
 	// Read PDB header
 	if err := binary.Read(file, binary.LittleEndian, &pdb); err != nil {
