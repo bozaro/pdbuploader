@@ -2,14 +2,16 @@ package main
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
-	"errors"
 )
 
 const mzHeaderSignature int16 = 0x5A4D
 const peHeaderSignature int32 = 0x00004550
+const rsdsHeaderSignature int32 = 0x53445352
 const imageDirectoryEntryDebug int32 = 6
+const imageDebugTypeCodeview int32 = 2
 
 type mzHeader struct {
 	Signature int16      // 0x00-0x02 mzHeaderSignature
@@ -79,8 +81,8 @@ type peDebugDirectory struct {
 	PointerToRawData int32
 }
 
-type RSDSHeader struct {
-	Signature     int32       // 0x00-0x04 0x53445352
+type rsdsHeader struct {
+	Signature     int32       // 0x00-0x04 rsdsHeaderSignature
 	GUID          [0x10]byte  // 0x04-0x14
 	TimeDateStamp int32       // 0x14-0x18
 	PDBFileName   [0x104]byte // 0x18-0x11C
@@ -108,13 +110,6 @@ func ParseExe(file *os.File) (*DebugInfo, error) {
 		return nil, errors.New("Invalid PE header signature")
 	}
 
-	fmt.Printf("PE timestamp: %08X\n", pe.TimeDateStamp)
-	fmt.Printf("PE image size: %08X\n", pe.SizeOfImage)
-
-	fmt.Printf("Sections count: %d\n", pe.NumberOfSections)
-	fmt.Printf("Sections alignment: %d\n", pe.SectionAlignment)
-	fmt.Printf("Size of headers: %d\n", pe.SizeOfHeaders)
-
 	if pe.NumberOfRvaAndSizes < imageDirectoryEntryDebug {
 		return nil, errors.New("Debug information not found in RVA table")
 	}
@@ -132,7 +127,7 @@ func ParseExe(file *os.File) (*DebugInfo, error) {
 	}
 
 	// Seek to PE sections after PE header
-	if _, err := file.Seek(int64(mz.PEOffset) + int64(pe.SizeOfOptionalHeader) + 0x18, 0); err != nil {
+	if _, err := file.Seek(int64(mz.PEOffset)+int64(pe.SizeOfOptionalHeader)+0x18, 0); err != nil {
 		return nil, err
 	}
 	// Find file offset for IMAGE_DEBUG_DIRECTORY
@@ -140,7 +135,7 @@ func ParseExe(file *os.File) (*DebugInfo, error) {
 	for i := int16(0); i < pe.NumberOfSections; i++ {
 		var section peSection
 		binary.Read(file, binary.LittleEndian, &section)
-		if (section.VirtualAddress <= debug_rva.VirtualAddress) && (section.VirtualAddress + section.VirtualSize > debug_rva.VirtualAddress) {
+		if (section.VirtualAddress <= debug_rva.VirtualAddress) && (section.VirtualAddress+section.VirtualSize > debug_rva.VirtualAddress) {
 			debug_dir_offest = int64(section.PointerToRawData + debug_rva.VirtualAddress - section.VirtualAddress)
 			break
 		}
@@ -154,27 +149,33 @@ func ParseExe(file *os.File) (*DebugInfo, error) {
 		return nil, err
 	}
 
+	// Search IMAGE_DEBUG_TYPE_CODEVIEW offset
 	rsds_offset := int64(0)
 	var debug_dir peDebugDirectory
-	fmt.Printf("IMAGE_DEBUG_DIRECTORY offset: %X (%d)\n", debug_dir_offest, binary.Size(&debug_dir))
-	for i := 0; i < int(debug_rva.VirtualSize) / binary.Size(&debug_dir); i++ {
-		binary.Read(file, binary.LittleEndian, &debug_dir)
-		fmt.Printf("   %d: %d\n", i, debug_dir.Type)
-		if debug_dir.Type == 2 {
-			fmt.Printf("RSDS offset: %X\n", debug_dir.PointerToRawData)
+	for i := 0; i < int(debug_rva.VirtualSize)/binary.Size(&debug_dir); i++ {
+		if err := binary.Read(file, binary.LittleEndian, &debug_dir); err != nil {
+			return nil, err
+		}
+		if debug_dir.Type == imageDebugTypeCodeview {
 			rsds_offset = int64(debug_dir.PointerToRawData)
 			break
 		}
 	}
-
-	var rsds RSDSHeader
-	if rsds_offset > 0 {
-		file.Seek(rsds_offset, 0)
-		binary.Read(file, binary.LittleEndian, &rsds)
+	if rsds_offset <= 0 {
+		return nil, errors.New("Can't find offset for CV_INFO_PDB20 debug information")
 	}
 
-	fmt.Printf("RSDS signature: %08X\n", rsds.Signature)
-	fmt.Printf("RSDS timestamp: %08X\n", rsds.TimeDateStamp)
+	// CV_INFO_PDB20 debug information
+	var rsds rsdsHeader
+	if _, err := file.Seek(rsds_offset, 0); err != nil {
+		return nil, err
+	}
+	if err := binary.Read(file, binary.LittleEndian, &rsds); err != nil {
+		return nil, err
+	}
+	if rsds.Signature != rsdsHeaderSignature {
+		return nil, errors.New("Invalid PE header signature")
+	}
 
 	return &DebugInfo{
 		fmt.Sprintf("%X%x", pe.TimeDateStamp, pe.SizeOfImage),
