@@ -8,14 +8,46 @@ import (
 	"flag"
 	"fmt"
 	"github.com/bozaro/pdbuploader/parse"
+	"github.com/bozaro/pdbuploader/uploader"
 	"net/http"
 	"os"
 )
 
-func upload(username string, password string) {
-	client := &http.Client{
-	//    CheckRedirect: redirectPolicyFunc,
+type Uploader  struct {
+	client     *http.Client
+	reqFactory uploader.RequestFactory
+}
+
+func NewUploader(client *http.Client, reqFactory uploader.RequestFactory) Uploader {
+	return Uploader{
+		client,
+		reqFactory,
 	}
+}
+
+func (this Uploader ) UploadFile(url string, content uploader.ContentProvider) error {
+	for i := 0; i < 5; i++ {
+		reader, err := content.GetReader()
+		if err != nil {
+			return err
+		}
+		request, err := this.reqFactory.NewRequest("PUT", url, reader)
+		if err != nil {
+			return err
+		}
+		response, err := this.client.Do(request)
+		if err == nil {
+			fmt.Println(response)
+			break
+		}
+	}
+	return nil
+}
+
+func upload(reqFactory uploader.RequestFactory) {
+	http_uploader := NewUploader(http.DefaultClient, reqFactory)
+	client := http.DefaultClient
+
 	/*req, err := http.NewRequest("HEAD", "https://webdav.yandex.ru/PDB/test.txt", nil)
 	req.SetBasicAuth(username, password)
 	resp, err := client.Do(req)
@@ -28,25 +60,25 @@ func upload(username string, password string) {
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(propfind)))
 	req.Header.Set("Depth", "1")
 	req.SetBasicAuth(username, password)*/
-
 	{
-		req, _ := http.NewRequest("MKCOL", "https://webdav.yandex.ru/PDB/foo", nil)
-		req.SetBasicAuth(username, password)
+		err := http_uploader.UploadFile("https://webdav.yandex.ru/PDB/foo/bar/blah.txt", uploader.NewBytesContentProvider([]byte("Example")))
+		fmt.Println(err)
+	}
+	{
+		req, _ := reqFactory.NewRequest("MKCOL", "https://webdav.yandex.ru/PDB/foo", nil)
 		client.Do(req)
 	}
 	{
 		data := []byte("Some file data")
-		req, _ := http.NewRequest("PUT", "https://webdav.yandex.ru/PDB/foo/bar.txt~", bytes.NewReader(data))
+		req, _ := reqFactory.NewRequest("PUT", "https://webdav.yandex.ru/PDB/foo/bar.txt~", bytes.NewReader(data))
 		req.Header.Set("Content-Type", "application/octet-stream")
 		req.Header.Set("Content-Length", fmt.Sprintf("%d", len(data)))
-		req.SetBasicAuth(username, password)
 		client.Do(req)
 	}
 	{
-		req, err := http.NewRequest("MOVE", "https://webdav.yandex.ru/PDB/foo/bar.txt~", nil)
+		req, err := reqFactory.NewRequest("MOVE", "https://webdav.yandex.ru/PDB/foo/bar.txt~", nil)
 		req.Header.Set("Destination", "/PDB/foo/bar.txt")
 		req.Header.Set("Overwrite", "T")
-		req.SetBasicAuth(username, password)
 
 		resp, err := client.Do(req)
 		fmt.Println(err)
@@ -61,7 +93,7 @@ func main() {
 	passwordPtr := flag.String("password", "", "Password")
 	flag.Parse()
 
-	upload(*usernamePtr, *passwordPtr)
+	upload(uploader.NewBasicRequestFactory(*usernamePtr, *passwordPtr))
 
 	file, _ := os.Open("sample/hello.exe")
 	{
