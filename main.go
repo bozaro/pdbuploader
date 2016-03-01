@@ -1,5 +1,6 @@
 // https://rsdn.ru/article/baseserv/pe_coff.xml
 // http://www.godevtool.com/Other/pdb.htm
+// https://tech.yandex.ru/disk/doc/dg/reference/move-docpage/
 package main
 
 import (
@@ -21,15 +22,36 @@ func upload(username string, password string) {
 	fmt.Println(err)
 	fmt.Println(resp)*/
 
-	propfind := []byte("<?xml version=\"1.0\"?><propfind xmlns=\"DAV:\"><propname/></propfind>")
+	/*propfind := []byte("<?xml version=\"1.0\"?><propfind xmlns=\"DAV:\"><propname/></propfind>")
 	req, err := http.NewRequest("PROPFIND", "https://webdav.yandex.ru/PDB", bytes.NewReader(propfind))
 	req.Header.Set("Content-Type", "application/xml")
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(propfind)))
-	req.SetBasicAuth(username, password)
+	req.Header.Set("Depth", "1")
+	req.SetBasicAuth(username, password)*/
 
-	resp, err := client.Do(req)
-	fmt.Println(err)
-	fmt.Println(resp)
+	{
+		req, _ := http.NewRequest("MKCOL", "https://webdav.yandex.ru/PDB/foo", nil)
+		req.SetBasicAuth(username, password)
+		client.Do(req)
+	}
+	{
+		data := []byte("Some file data")
+		req, _ := http.NewRequest("PUT", "https://webdav.yandex.ru/PDB/foo/bar.txt~", bytes.NewReader(data))
+		req.Header.Set("Content-Type", "application/octet-stream")
+		req.Header.Set("Content-Length", fmt.Sprintf("%d", len(data)))
+		req.SetBasicAuth(username, password)
+		client.Do(req)
+	}
+	{
+		req, err := http.NewRequest("MOVE", "https://webdav.yandex.ru/PDB/foo/bar.txt~", nil)
+		req.Header.Set("Destination", "/PDB/foo/bar.txt")
+		req.Header.Set("Overwrite", "T")
+		req.SetBasicAuth(username, password)
+
+		resp, err := client.Do(req)
+		fmt.Println(err)
+		fmt.Println(resp)
+	}
 
 }
 
