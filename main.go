@@ -5,15 +5,24 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/bozaro/pdbuploader/parse"
 	"github.com/bozaro/pdbuploader/uploader"
 	"net/http"
 	"os"
+	"time"
 )
 
-type Uploader  struct {
+const (
+	maxRetryCount     int = 5
+	initialRetryDelay int = 100
+)
+
+type requestProvider func() (*http.Request, error)
+
+type Uploader struct {
 	client     *http.Client
 	reqFactory uploader.RequestFactory
 }
@@ -25,23 +34,59 @@ func NewUploader(client *http.Client, reqFactory uploader.RequestFactory) Upload
 	}
 }
 
-func (this Uploader ) UploadFile(url string, content uploader.ContentProvider) error {
-	for i := 0; i < 5; i++ {
-		reader, err := content.GetReader()
+func (this Uploader) doRequest(provider requestProvider) (*http.Response, error) {
+	retryDelay := initialRetryDelay
+	for pass := 0; ; pass++ {
+		request, err := provider()
 		if err != nil {
-			return err
-		}
-		request, err := this.reqFactory.NewRequest("PUT", url, reader)
-		if err != nil {
-			return err
+			return nil, err
 		}
 		response, err := this.client.Do(request)
-		if err == nil {
-			fmt.Println(response)
-			break
+		if (err == nil) && (response.StatusCode < 500 || response.StatusCode >= 600) {
+			return response, nil
+		}
+		if pass >= maxRetryCount {
+			return response, err
+		}
+		time.Sleep(time.Duration(retryDelay) * time.Millisecond)
+		retryDelay *= 2
+	}
+}
+
+func (this Uploader) UploadFile(url string, content uploader.ContentProvider) error {
+	response, err := this.doRequest(func() (*http.Request, error) {
+		reader, err := content.GetReader()
+		if err != nil {
+			return nil, err
+		}
+		req, err := this.reqFactory("PUT", url, reader)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Overwrite", "T")
+		return req, nil
+	})
+	if err != nil {
+		return err
+	}
+	if response.StatusCode == 409 {
+		// todo: Create parent directory
+		response, err = this.doRequest(func() (*http.Request, error) {
+			reader, err := content.GetReader()
+			if err != nil {
+				return nil, err
+			}
+			return this.reqFactory("PUT", url, reader)
+		})
+		if err != nil {
+			return err
 		}
 	}
-	return nil
+	// Successfully uploaded
+	if response.StatusCode == 201 {
+		return nil
+	}
+	return errors.New(fmt.Sprintf("Unexpected PUT status code %d [%s]: %s", response.StatusCode, response.Status, url))
 }
 
 func upload(reqFactory uploader.RequestFactory) {
@@ -65,18 +110,18 @@ func upload(reqFactory uploader.RequestFactory) {
 		fmt.Println(err)
 	}
 	{
-		req, _ := reqFactory.NewRequest("MKCOL", "https://webdav.yandex.ru/PDB/foo", nil)
+		req, _ := reqFactory("MKCOL", "https://webdav.yandex.ru/PDB/foo", nil)
 		client.Do(req)
 	}
 	{
 		data := []byte("Some file data")
-		req, _ := reqFactory.NewRequest("PUT", "https://webdav.yandex.ru/PDB/foo/bar.txt~", bytes.NewReader(data))
+		req, _ := reqFactory("PUT", "https://webdav.yandex.ru/PDB/foo/bar.txt~", bytes.NewReader(data))
 		req.Header.Set("Content-Type", "application/octet-stream")
 		req.Header.Set("Content-Length", fmt.Sprintf("%d", len(data)))
 		client.Do(req)
 	}
 	{
-		req, err := reqFactory.NewRequest("MOVE", "https://webdav.yandex.ru/PDB/foo/bar.txt~", nil)
+		req, err := reqFactory("MOVE", "https://webdav.yandex.ru/PDB/foo/bar.txt~", nil)
 		req.Header.Set("Destination", "/PDB/foo/bar.txt")
 		req.Header.Set("Overwrite", "T")
 
