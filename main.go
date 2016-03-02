@@ -18,19 +18,21 @@ import (
 )
 
 const (
-	maxRetryCount     int = 5
+	maxRetryCount int = 5
 	initialRetryDelay int = 100
 )
 
 type requestProvider func() (*http.Request, error)
 
 type Uploader struct {
-	client     *http.Client
-	reqFactory uploader.RequestFactory
+	SupportPutOverwrite bool
+	client              *http.Client
+	reqFactory          uploader.RequestFactory
 }
 
 func NewUploader(client *http.Client, reqFactory uploader.RequestFactory) Uploader {
 	return Uploader{
+		false,
 		client,
 		reqFactory,
 	}
@@ -38,7 +40,7 @@ func NewUploader(client *http.Client, reqFactory uploader.RequestFactory) Upload
 
 func (this Uploader) doRequest(provider requestProvider) (*http.Response, error) {
 	retryDelay := initialRetryDelay
-	for pass := 0; ; pass++ {
+	for pass := 0;; pass++ {
 		request, err := provider()
 		if err != nil {
 			return nil, err
@@ -95,9 +97,27 @@ func (this Uploader) MkDir(u *url.URL) error {
 	return errors.New(fmt.Sprintf("Unexpected MKCOL status code %d [%s]: %s", response.StatusCode, response.Status, u.String()))
 }
 
-func (this Uploader) UploadFile(u *url.URL, content uploader.ContentProvider) error {
+func (this Uploader) UploadFile(u *url.URL, content uploader.ContentProvider, overwrite bool) error {
 	if strings.HasSuffix(u.Path, "/") {
 		return errors.New(fmt.Sprintf("Invalid target URL. Require file name in path: %s", u.String()))
+	}
+	if !(overwrite && this.SupportPutOverwrite) {
+		response, err := this.doRequest(func() (*http.Request, error) {
+			return this.reqFactory("HEAD", u.String(), nil)
+		})
+		if err != nil {
+			return err
+		}
+		switch response.StatusCode {
+		// File already exists
+		case 200:
+			return nil
+		// Not found
+		case 404:
+			break
+		default:
+			return errors.New(fmt.Sprintf("Unexpected HEAD status code %d [%s]: %s", response.StatusCode, response.Status, u.String()))
+		}
 	}
 	requestFunc := func() (*http.Request, error) {
 		reader, err := content.GetReader()
@@ -108,7 +128,9 @@ func (this Uploader) UploadFile(u *url.URL, content uploader.ContentProvider) er
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("Overwrite", "F") // todo
+		if !overwrite {
+			req.Header.Set("Overwrite", "F")
+		}
 		return req, nil
 	}
 	response, err := this.doRequest(requestFunc)
@@ -135,7 +157,7 @@ func upload(reqFactory uploader.RequestFactory) {
 	http_uploader := NewUploader(http.DefaultClient, reqFactory)
 
 	u, _ := url.Parse("https://webdav.yandex.ru/PDB/foo/bar/blah.txt")
-	err := http_uploader.UploadFile(u, uploader.NewBytesContentProvider([]byte("Example")))
+	err := http_uploader.UploadFile(u, uploader.NewBytesContentProvider([]byte("Example")), false)
 	fmt.Println(err)
 }
 
@@ -147,8 +169,10 @@ func main() {
 
 	upload(uploader.NewBasicRequestFactory(*usernamePtr, *passwordPtr))
 
-	file, _ := os.Open("sample/hello.exe")
 	{
+		file, _ := os.Open("sample/hello.exe")
+		defer file.Close()
+
 		info, err := parse.ParseExe(file)
 		fmt.Printf("EXE: %s\n", err)
 		if err == nil {
@@ -157,8 +181,10 @@ func main() {
 			fmt.Printf("  PDB: %s\n", info.PDBFileName)
 		}
 	}
-	file, _ = os.Open("sample/hello.pdb")
 	{
+		file, _ := os.Open("sample/hello.pdb")
+		defer file.Close()
+
 		debug_id, err := parse.ParsePdb(file)
 		fmt.Printf("PDB: %s\n", err)
 		if err == nil {
