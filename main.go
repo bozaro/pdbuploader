@@ -4,7 +4,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"github.com/bozaro/pdbuploader/parse"
@@ -12,149 +11,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
-	"strings"
-	"time"
 )
-
-const (
-	maxRetryCount int = 5
-	initialRetryDelay int = 100
-)
-
-type requestProvider func() (*http.Request, error)
-
-type Uploader struct {
-	SupportPutOverwrite bool
-	client              *http.Client
-	reqFactory          uploader.RequestFactory
-}
-
-func NewUploader(client *http.Client, reqFactory uploader.RequestFactory) Uploader {
-	return Uploader{
-		false,
-		client,
-		reqFactory,
-	}
-}
-
-func (this Uploader) doRequest(provider requestProvider) (*http.Response, error) {
-	retryDelay := initialRetryDelay
-	for pass := 0;; pass++ {
-		request, err := provider()
-		if err != nil {
-			return nil, err
-		}
-		response, err := this.client.Do(request)
-		if (err == nil) && (response.StatusCode < 500 || response.StatusCode >= 600) {
-			return response, nil
-		}
-		if pass >= maxRetryCount {
-			return response, err
-		}
-		time.Sleep(time.Duration(retryDelay) * time.Millisecond)
-		retryDelay *= 2
-	}
-}
-
-func parentUrl(u *url.URL) *url.URL {
-	if u == nil || u.Path == "" || u.Path == "/" {
-		return nil
-	}
-	r := *u
-	r.Path = path.Dir(r.Path)
-	return &r
-}
-
-func (this Uploader) MkDir(u *url.URL) error {
-	if u.Path == "" || u.Path == "/" {
-		return errors.New(fmt.Sprintf("Can't create root path: %s", u.String()))
-	}
-	requestFunc := func() (*http.Request, error) {
-		return this.reqFactory("MKCOL", u.String(), nil)
-	}
-	response, err := this.doRequest(requestFunc)
-	if err != nil {
-		return err
-	}
-	// Already created
-	if response.StatusCode == 405 {
-		return nil
-	}
-	if response.StatusCode == 409 {
-		if err := this.MkDir(parentUrl(u)); err != nil {
-			return err
-		}
-		response, err = this.doRequest(requestFunc)
-		if err != nil {
-			return err
-		}
-	}
-	// Successfully created
-	if response.StatusCode == 201 {
-		return nil
-	}
-	return errors.New(fmt.Sprintf("Unexpected MKCOL status code %d [%s]: %s", response.StatusCode, response.Status, u.String()))
-}
-
-func (this Uploader) UploadFile(u *url.URL, content uploader.ContentProvider, overwrite bool) error {
-	if strings.HasSuffix(u.Path, "/") {
-		return errors.New(fmt.Sprintf("Invalid target URL. Require file name in path: %s", u.String()))
-	}
-	if !(overwrite && this.SupportPutOverwrite) {
-		response, err := this.doRequest(func() (*http.Request, error) {
-			return this.reqFactory("HEAD", u.String(), nil)
-		})
-		if err != nil {
-			return err
-		}
-		switch response.StatusCode {
-		// File already exists
-		case 200:
-			return nil
-		// Not found
-		case 404:
-			break
-		default:
-			return errors.New(fmt.Sprintf("Unexpected HEAD status code %d [%s]: %s", response.StatusCode, response.Status, u.String()))
-		}
-	}
-	requestFunc := func() (*http.Request, error) {
-		reader, err := content.GetReader()
-		if err != nil {
-			return nil, err
-		}
-		req, err := this.reqFactory("PUT", u.String(), reader)
-		if err != nil {
-			return nil, err
-		}
-		if !overwrite {
-			req.Header.Set("Overwrite", "F")
-		}
-		return req, nil
-	}
-	response, err := this.doRequest(requestFunc)
-	if err != nil {
-		return err
-	}
-	if response.StatusCode == 409 {
-		if err := this.MkDir(parentUrl(u)); err != nil {
-			return err
-		}
-		response, err = this.doRequest(requestFunc)
-		if err != nil {
-			return err
-		}
-	}
-	// Successfully uploaded
-	if response.StatusCode == 201 {
-		return nil
-	}
-	return errors.New(fmt.Sprintf("Unexpected PUT status code %d [%s]: %s", response.StatusCode, response.Status, u.String()))
-}
 
 func upload(reqFactory uploader.RequestFactory) {
-	http_uploader := NewUploader(http.DefaultClient, reqFactory)
+	http_uploader := uploader.NewUploader(http.DefaultClient, reqFactory)
 
 	u, _ := url.Parse("https://webdav.yandex.ru/PDB/foo/bar/blah.txt")
 	err := http_uploader.UploadFile(u, uploader.NewBytesContentProvider([]byte("Example")), false)
@@ -162,7 +22,6 @@ func upload(reqFactory uploader.RequestFactory) {
 }
 
 func main() {
-
 	usernamePtr := flag.String("username", "bozaro", "Username")
 	passwordPtr := flag.String("password", "", "Password")
 	flag.Parse()
