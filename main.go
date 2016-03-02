@@ -4,14 +4,16 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"flag"
 	"fmt"
 	"github.com/bozaro/pdbuploader/parse"
 	"github.com/bozaro/pdbuploader/uploader"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
+	"strings"
 	"time"
 )
 
@@ -53,31 +55,71 @@ func (this Uploader) doRequest(provider requestProvider) (*http.Response, error)
 	}
 }
 
-func (this Uploader) UploadFile(url string, content uploader.ContentProvider) error {
-	response, err := this.doRequest(func() (*http.Request, error) {
+func parentUrl(u *url.URL) *url.URL {
+	if u == nil || u.Path == "" || u.Path == "/" {
+		return nil
+	}
+	r := *u
+	r.Path = path.Dir(r.Path)
+	return &r
+}
+
+func (this Uploader) MkDir(u *url.URL) error {
+	if u.Path == "" || u.Path == "/" {
+		return errors.New(fmt.Sprintf("Can't create root path: %s", u.String()))
+	}
+	requestFunc := func() (*http.Request, error) {
+		return this.reqFactory("MKCOL", u.String(), nil)
+	}
+	response, err := this.doRequest(requestFunc)
+	if err != nil {
+		return err
+	}
+	// Already created
+	if response.StatusCode == 405 {
+		return nil
+	}
+	if response.StatusCode == 409 {
+		if err := this.MkDir(parentUrl(u)); err != nil {
+			return err
+		}
+		response, err = this.doRequest(requestFunc)
+		if err != nil {
+			return err
+		}
+	}
+	// Successfully created
+	if response.StatusCode == 201 {
+		return nil
+	}
+	return errors.New(fmt.Sprintf("Unexpected MKCOL status code %d [%s]: %s", response.StatusCode, response.Status, u.String()))
+}
+
+func (this Uploader) UploadFile(u *url.URL, content uploader.ContentProvider) error {
+	if strings.HasSuffix(u.Path, "/") {
+		return errors.New(fmt.Sprintf("Invalid target URL. Require file name in path: %s", u.String()))
+	}
+	requestFunc := func() (*http.Request, error) {
 		reader, err := content.GetReader()
 		if err != nil {
 			return nil, err
 		}
-		req, err := this.reqFactory("PUT", url, reader)
+		req, err := this.reqFactory("PUT", u.String(), reader)
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("Overwrite", "T")
+		req.Header.Set("Overwrite", "F") // todo
 		return req, nil
-	})
+	}
+	response, err := this.doRequest(requestFunc)
 	if err != nil {
 		return err
 	}
 	if response.StatusCode == 409 {
-		// todo: Create parent directory
-		response, err = this.doRequest(func() (*http.Request, error) {
-			reader, err := content.GetReader()
-			if err != nil {
-				return nil, err
-			}
-			return this.reqFactory("PUT", url, reader)
-		})
+		if err := this.MkDir(parentUrl(u)); err != nil {
+			return err
+		}
+		response, err = this.doRequest(requestFunc)
 		if err != nil {
 			return err
 		}
@@ -86,50 +128,15 @@ func (this Uploader) UploadFile(url string, content uploader.ContentProvider) er
 	if response.StatusCode == 201 {
 		return nil
 	}
-	return errors.New(fmt.Sprintf("Unexpected PUT status code %d [%s]: %s", response.StatusCode, response.Status, url))
+	return errors.New(fmt.Sprintf("Unexpected PUT status code %d [%s]: %s", response.StatusCode, response.Status, u.String()))
 }
 
 func upload(reqFactory uploader.RequestFactory) {
 	http_uploader := NewUploader(http.DefaultClient, reqFactory)
-	client := http.DefaultClient
 
-	/*req, err := http.NewRequest("HEAD", "https://webdav.yandex.ru/PDB/test.txt", nil)
-	req.SetBasicAuth(username, password)
-	resp, err := client.Do(req)
+	u, _ := url.Parse("https://webdav.yandex.ru/PDB/foo/bar/blah.txt")
+	err := http_uploader.UploadFile(u, uploader.NewBytesContentProvider([]byte("Example")))
 	fmt.Println(err)
-	fmt.Println(resp)*/
-
-	/*propfind := []byte("<?xml version=\"1.0\"?><propfind xmlns=\"DAV:\"><propname/></propfind>")
-	req, err := http.NewRequest("PROPFIND", "https://webdav.yandex.ru/PDB", bytes.NewReader(propfind))
-	req.Header.Set("Content-Type", "application/xml")
-	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(propfind)))
-	req.Header.Set("Depth", "1")
-	req.SetBasicAuth(username, password)*/
-	{
-		err := http_uploader.UploadFile("https://webdav.yandex.ru/PDB/foo/bar/blah.txt", uploader.NewBytesContentProvider([]byte("Example")))
-		fmt.Println(err)
-	}
-	{
-		req, _ := reqFactory("MKCOL", "https://webdav.yandex.ru/PDB/foo", nil)
-		client.Do(req)
-	}
-	{
-		data := []byte("Some file data")
-		req, _ := reqFactory("PUT", "https://webdav.yandex.ru/PDB/foo/bar.txt~", bytes.NewReader(data))
-		req.Header.Set("Content-Type", "application/octet-stream")
-		req.Header.Set("Content-Length", fmt.Sprintf("%d", len(data)))
-		client.Do(req)
-	}
-	{
-		req, err := reqFactory("MOVE", "https://webdav.yandex.ru/PDB/foo/bar.txt~", nil)
-		req.Header.Set("Destination", "/PDB/foo/bar.txt")
-		req.Header.Set("Overwrite", "T")
-
-		resp, err := client.Do(req)
-		fmt.Println(err)
-		fmt.Println(resp)
-	}
-
 }
 
 func main() {
