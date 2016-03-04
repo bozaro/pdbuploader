@@ -23,6 +23,22 @@ func SplitPattern(path string) []string {
 	return result
 }
 
+/**
+  Remove redundant pattern parts and make patterns more simple.
+
+  @param tokens Original modifiable list.
+  @return Return tokens,
+*/
 func NormalizePattern(tokens []string) []string {
+	if len(tokens) == 1 {
+		if tokens[0] == "/" {
+			tokens[0] = "**/"
+		} else {
+			tokens = []string{"**/", tokens[0]}
+		}
+	}
+	if len(tokens) == 0 || tokens[0] != "/" {
+		tokens = append([]string{"/"}, tokens...)
+	}
 	return tokens
 }
