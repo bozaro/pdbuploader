@@ -44,8 +44,8 @@ func NormalizePattern(tokens []string) []string {
 			tokens = []string{"**/", tokens[0]}
 		}
 	}
-	if len(tokens) > 0 && tokens[0] == "/" {
-		tokens = tokens[1:]
+	if len(tokens) == 0 || tokens[0] != "/" {
+		tokens = append([]string{"/"}, tokens...)
 	}
 	// Use "**.foo" as "**/*.foo"
 	for i := 0; i < len(tokens); i++ {
@@ -58,7 +58,9 @@ func NormalizePattern(tokens []string) []string {
 	//  * "**/*/" to "*/**/"
 	//  * "**/**/" to "**/"
 	for i := 0; i < len(tokens)-1; {
-		if tokens[i] == "**/" && tokens[i+1] == "**/" {
+		if i > 0 && tokens[i] == "/" {
+			tokens = append(tokens[:i], tokens[i+1:]...)
+		} else if tokens[i] == "**/" && tokens[i+1] == "**/" {
 			tokens = append(tokens[:i], tokens[i+1:]...)
 		} else if tokens[i] == "**/" && tokens[i+1] == "*/" {
 			tokens[i] = "*/"
@@ -68,6 +70,15 @@ func NormalizePattern(tokens []string) []string {
 			}
 		} else {
 			i++
+		}
+	}
+	// Remove tailing "**/" and "*"
+	for len(tokens) > 0 {
+		token := tokens[len(tokens)-1]
+		if token == "**/" || token == "*" {
+			tokens = tokens[:len(tokens)-1]
+		} else {
+			break
 		}
 	}
 	return tokens

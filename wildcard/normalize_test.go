@@ -17,11 +17,11 @@ func (this normalizePatternData) String() string {
 func TestNormalizePattern(t *testing.T) {
 	data := []normalizePatternData{
 		// Simple mask
-		normalizePatternData{"/", []string{"**/"}},
-		normalizePatternData{"*/", []string{"*/", "**/"}},
-		normalizePatternData{"*", []string{"*"}},
+		normalizePatternData{"/", []string{}},
+		normalizePatternData{"*/", []string{"*/"}},
+		normalizePatternData{"*", []string{}},
 		normalizePatternData{"**", []string{}},
-		normalizePatternData{"**/", []string{"**/"}},
+		normalizePatternData{"**/", []string{}},
 		normalizePatternData{"foo", []string{"**/", "foo"}},
 		normalizePatternData{"foo/", []string{"**/", "foo/"}},
 		normalizePatternData{"/foo", []string{"foo"}},
@@ -44,11 +44,11 @@ func TestNormalizePattern(t *testing.T) {
 
 		// Collapse trailing masks
 		normalizePatternData{"foo/**", []string{"foo/"}},
-		normalizePatternData{"foo/**/*", []string{"foo/", "*"}},
-		normalizePatternData{"foo/**/*/*", []string{"foo/", "*/", "*"}},
-		normalizePatternData{"foo/**/", []string{"foo/", "**/"}},
-		normalizePatternData{"foo/**/*/", []string{"foo/", "*/", "**/"}},
-		normalizePatternData{"foo/**/*/*/", []string{"foo/", "*/", "*/", "**/"}},
+		normalizePatternData{"foo/**/*", []string{"foo/"}},
+		normalizePatternData{"foo/**/*/*", []string{"foo/", "*/"}},
+		normalizePatternData{"foo/**/", []string{"foo/"}},
+		normalizePatternData{"foo/**/*/", []string{"foo/", "*/"}},
+		normalizePatternData{"foo/**/*/*/", []string{"foo/", "*/", "*/"}},
 	}
 	for _, value := range data {
 		normalizePatternCheck(t, &value)
@@ -57,5 +57,5 @@ func TestNormalizePattern(t *testing.T) {
 
 func normalizePatternCheck(t *testing.T, v *normalizePatternData) {
 	actual := NormalizePattern(SplitPattern(v.pattern))
-	assert.Equal(t, v.expected, actual, v.String())
+	assert.Equal(t, append([]string{"/"}, v.expected...), actual, v.String())
 }
