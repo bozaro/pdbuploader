@@ -1,5 +1,9 @@
 package wildcard
 
+import (
+	"strings"
+)
+
 const PATH_SEPARATOR rune = '/'
 
 /**
@@ -30,6 +34,9 @@ func SplitPattern(path string) []string {
   @return Return tokens,
 */
 func NormalizePattern(tokens []string) []string {
+	// Copy array
+	tokens = append([]string(nil), tokens...)
+	// By default without slashes using mask for files in all subdirectories
 	if len(tokens) == 1 {
 		if tokens[0] == "/" {
 			tokens[0] = "**/"
@@ -37,8 +44,31 @@ func NormalizePattern(tokens []string) []string {
 			tokens = []string{"**/", tokens[0]}
 		}
 	}
-	if len(tokens) == 0 || tokens[0] != "/" {
-		tokens = append([]string{"/"}, tokens...)
+	if len(tokens) > 0 && tokens[0] == "/" {
+		tokens = tokens[1:]
+	}
+	// Use "**.foo" as "**/*.foo"
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
+		if token != "**/" && strings.HasPrefix(token, "**") {
+			tokens = append(tokens[:i], append([]string{"**/", token[1:]}, tokens[i+1:]...)...)
+		}
+	}
+	// Replace:
+	//  * "**/*/" to "*/**/"
+	//  * "**/**/" to "**/"
+	for i := 0; i < len(tokens)-1; {
+		if tokens[i] == "**/" && tokens[i+1] == "**/" {
+			tokens = append(tokens[:i], tokens[i+1:]...)
+		} else if tokens[i] == "**/" && tokens[i+1] == "*/" {
+			tokens[i] = "*/"
+			tokens[i+1] = "**/"
+			if i > 0 {
+				i = i - 1
+			}
+		} else {
+			i++
+		}
 	}
 	return tokens
 }
