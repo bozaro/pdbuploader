@@ -44,33 +44,36 @@ func NormalizePattern(tokens []string) []string {
 			tokens = []string{"**/", tokens[0]}
 		}
 	}
+	// Normalized pattern always starts with "/"
 	if len(tokens) == 0 || tokens[0] != "/" {
 		tokens = append([]string{"/"}, tokens...)
-	}
-	// Use "**.foo" as "**/*.foo"
-	for i := 0; i < len(tokens); i++ {
-		token := tokens[i]
-		if token != "**/" && strings.HasPrefix(token, "**") {
-			tokens = append(tokens[:i], append([]string{"**/", token[1:]}, tokens[i+1:]...)...)
-		}
 	}
 	// Replace:
 	//  * "**/*/" to "*/**/"
 	//  * "**/**/" to "**/"
-	for i := 0; i < len(tokens)-1; {
-		if i > 0 && tokens[i] == "/" {
+	//  * "**.foo" to "**/*.foo"
+	for i := 1; i < len(tokens); {
+		thisToken := tokens[i]
+		prevToken := tokens[i-1]
+		if thisToken == "/" {
 			tokens = append(tokens[:i], tokens[i+1:]...)
-		} else if tokens[i] == "**/" && tokens[i+1] == "**/" {
-			tokens = append(tokens[:i], tokens[i+1:]...)
-		} else if tokens[i] == "**/" && tokens[i+1] == "*/" {
-			tokens[i] = "*/"
-			tokens[i+1] = "**/"
-			if i > 0 {
-				i = i - 1
-			}
-		} else {
-			i++
+			continue
 		}
+		if thisToken == "**/" && prevToken == "**/" {
+			tokens = append(tokens[:i], tokens[i+1:]...)
+			continue
+		}
+		if thisToken != "**/" && strings.HasPrefix(thisToken, "**") {
+			tokens = append(tokens[:i], append([]string{"**/", thisToken[1:]}, tokens[i+1:]...)...)
+			continue
+		}
+		if thisToken == "*/" && prevToken == "**/" {
+			tokens[i-1] = "*/"
+			tokens[i] = "**/"
+			i--
+			continue
+		}
+		i++
 	}
 	// Remove tailing "**/" and "*"
 	for len(tokens) > 0 {
