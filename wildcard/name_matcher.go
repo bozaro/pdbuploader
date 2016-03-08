@@ -10,6 +10,63 @@ type NameMatcher interface {
 	Recursive() bool
 }
 
+func NewNameMatcher(mask string) NameMatcher {
+	if mask == "**/" {
+		return RecursiveMatcher{}
+	}
+	dirOnly := strings.HasSuffix(mask, "/")
+	if dirOnly {
+		mask = mask[:len(mask)-1]
+	}
+	nameMask := tryRemoveBackslashes(mask)
+	if strings.Contains(nameMask, "[") || strings.Contains(nameMask, "]") || strings.Contains(nameMask, "\\") || strings.Contains(nameMask, "?") {
+		return ComplexMatcher{maskToRegexp(nameMask), dirOnly}
+	}
+	// Subversion compatible mask.
+	asterisk := strings.Index(nameMask, "*")
+	if asterisk < 0 {
+		return EqualsMatcher{nameMask, dirOnly}
+	} else if strings.Index(mask[asterisk+1:], "*") < 0 {
+		return SimpleMatcher{nameMask[:asterisk], nameMask[asterisk+1:], dirOnly}
+	}
+	return ComplexMatcher{maskToRegexp(nameMask), dirOnly}
+}
+
+func maskToRegexp(mask string) *regexp.Regexp {
+	// todo: Mask to regexp
+	return nil
+}
+
+func tryRemoveBackslashes(pattern string) string {
+	result := ""
+	start := 0
+	for true {
+		next := strings.Index(pattern[start:], "\\")
+		if next == -1 {
+			if start < len(pattern) {
+				result += pattern[start:]
+			}
+			break
+		}
+		next += start
+		if next == len(pattern)-1 {
+			// Return original string.
+			return pattern
+		}
+		switch pattern[next+1] {
+		case ' ':
+		case '#':
+		case '!':
+			result += pattern[start:next]
+			start = next + 1
+			break
+		default:
+			return pattern
+		}
+	}
+	return result
+}
+
 // Recursive directory matcher like "**".
 type RecursiveMatcher struct {
 }

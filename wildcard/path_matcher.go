@@ -5,6 +5,40 @@ type PathMatcher interface {
 	Matched() bool
 }
 
+func NewPathMatcher(pattern string) PathMatcher {
+	nameMatchers := createNameMatchers(pattern)
+	if len(nameMatchers) == 0 {
+		return AlwaysMatcher{}
+	}
+	if hasRecursive(nameMatchers) {
+		if len(nameMatchers) == 2 && nameMatchers[0].Recursive() && !nameMatchers[1].Recursive() {
+			return newFileMaskMatcher(nameMatchers[1])
+		} else {
+			return newRecursivePathMatcher(nameMatchers)
+		}
+	} else {
+		return newSimplePathMatcher(nameMatchers)
+	}
+}
+
+func hasRecursive(nameMatchers []NameMatcher) bool {
+	for _, matcher := range nameMatchers {
+		if matcher.Recursive() {
+			return true
+		}
+	}
+	return false
+}
+
+func createNameMatchers(pattern string) []NameMatcher {
+	tokens := NormalizePattern(SplitPattern(pattern))
+	result := make([]NameMatcher, len(tokens)-1)
+	for i := range result {
+		result[i] = NewNameMatcher(tokens[i+1])
+	}
+	return result
+}
+
 type AlwaysMatcher struct {
 }
 
@@ -19,6 +53,12 @@ func (this AlwaysMatcher) Matched() bool {
 // Complex full-feature pattern matcher.
 type FileMaskMatcher struct {
 	matcher NameMatcher
+}
+
+func newFileMaskMatcher(matcher NameMatcher) FileMaskMatcher {
+	return FileMaskMatcher{
+		matcher: matcher,
+	}
 }
 
 func (this FileMaskMatcher) CreateChild(name string, dir bool) PathMatcher {
