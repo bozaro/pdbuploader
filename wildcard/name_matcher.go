@@ -11,52 +11,73 @@ type NameMatcher interface {
 	Recursive() bool
 }
 
-func NewNameMatcher(mask string) NameMatcher {
+type maskType int
+
+const (
+	maskEquals maskType = iota
+	maskSimple
+	maskComplex
+)
+
+func NewNameMatcher(mask string) (NameMatcher, error) {
 	if mask == "**/" {
-		return RecursiveMatcher{}
+		return RecursiveMatcher{}, nil
 	}
 	dirOnly := strings.HasSuffix(mask, "/")
 	if dirOnly {
 		mask = mask[:len(mask)-1]
 	}
 	nameMask := tryRemoveBackslashes(mask)
-	if strings.Contains(nameMask, "[") || strings.Contains(nameMask, "]") || strings.Contains(nameMask, "\\") || strings.Contains(nameMask, "?") {
-		return ComplexMatcher{maskToRegexp(nameMask), dirOnly}
+	reg, kind, err := maskToRegexp(nameMask)
+	if err != nil {
+		return nil, err
 	}
-	// Subversion compatible mask.
-	asterisk := strings.Index(nameMask, "*")
-	if asterisk < 0 {
-		return EqualsMatcher{nameMask, dirOnly}
-	} else if strings.Index(mask[asterisk+1:], "*") < 0 {
-		return SimpleMatcher{nameMask[:asterisk], nameMask[asterisk+1:], dirOnly}
+
+	switch kind {
+	case maskEquals:
+		return EqualsMatcher{nameMask, dirOnly}, nil
+	case maskSimple:
+		asterisk := strings.Index(nameMask, "*")
+		return SimpleMatcher{nameMask[:asterisk], nameMask[asterisk+1:], dirOnly}, nil
+	default:
+		return ComplexMatcher{reg, dirOnly}, nil
 	}
-	return ComplexMatcher{maskToRegexp(nameMask), dirOnly}
 }
 
-func maskToRegexp(mask string) *regexp.Regexp {
+func maskToRegexp(mask string) (*regexp.Regexp, maskType, error) {
 	expr := ""
 	last := 0
+	kind := maskEquals
 	for index, runeValue := range mask {
 		switch runeValue {
-		case '[', ']', '(', ')', '|', '-':
+		case '|', '-':
 			expr += regexp.QuoteMeta(mask[last:index])
 			expr += string(byte(runeValue))
 			last = index + 1
+		case '[', ']', '(', ')':
+			expr += regexp.QuoteMeta(mask[last:index])
+			expr += string(byte(runeValue))
+			last = index + 1
+			kind = maskComplex
 		case '?':
 			expr += regexp.QuoteMeta(mask[last:index])
 			expr += "."
 			last = index + 1
+			kind = maskComplex
 		case '*':
 			expr += regexp.QuoteMeta(mask[last:index])
 			expr += ".*"
 			last = index + 1
+			if kind == maskEquals {
+				kind = maskSimple
+			} else {
+				kind = maskComplex
+			}
 		}
 	}
 	expr += regexp.QuoteMeta(mask[last:])
-	// todo: Mask to regexp
-	r, _ := regexp.Compile(expr)
-	fmt.Println("  mask: " + mask + " -> " + expr)
-	return r
+	reg, err := regexp.Compile(expr)
+	return reg, kind, err
 }
 
 func tryRemoveBackslashes(pattern string) string {
@@ -117,6 +138,10 @@ func (this SimpleMatcher) Recursive() bool {
 	return false
 }
 
+func (this SimpleMatcher) String() string {
+	return fmt.Sprintf("equals(%s, %s, %s)", this.prefix, this.suffix, this.dirOnly)
+}
+
 // Simple matcher for equals compare.
 type EqualsMatcher struct {
 	name    string
@@ -131,6 +156,10 @@ func (this EqualsMatcher) Recursive() bool {
 	return false
 }
 
+func (this EqualsMatcher) String() string {
+	return fmt.Sprintf("equals(%s, %s)", this.name, this.dirOnly)
+}
+
 // Simple matcher for regexp compare.
 type ComplexMatcher struct {
 	matcher *regexp.Regexp
@@ -143,4 +172,8 @@ func (this ComplexMatcher) Matched(name string, dir bool) bool {
 
 func (this ComplexMatcher) Recursive() bool {
 	return false
+}
+
+func (this ComplexMatcher) String() string {
+	return fmt.Sprintf("complex(%s, %s)", this.matcher, this.dirOnly)
 }

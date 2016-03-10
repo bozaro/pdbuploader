@@ -5,19 +5,22 @@ type PathMatcher interface {
 	Matched() bool
 }
 
-func NewPathMatcher(pattern string) PathMatcher {
-	nameMatchers := createNameMatchers(pattern)
+func NewPathMatcher(pattern string) (PathMatcher, error) {
+	nameMatchers, err := createNameMatchers(pattern)
+	if err != nil {
+		return nil, err
+	}
 	if len(nameMatchers) == 0 {
-		return AlwaysMatcher{}
+		return AlwaysMatcher{}, nil
 	}
 	if hasRecursive(nameMatchers) {
 		if len(nameMatchers) == 2 && nameMatchers[0].Recursive() && !nameMatchers[1].Recursive() {
-			return newFileMaskMatcher(nameMatchers[1])
+			return newFileMaskMatcher(nameMatchers[1]), nil
 		} else {
-			return newRecursivePathMatcher(nameMatchers)
+			return newRecursivePathMatcher(nameMatchers), nil
 		}
 	} else {
-		return newSimplePathMatcher(nameMatchers)
+		return newSimplePathMatcher(nameMatchers), nil
 	}
 }
 
@@ -30,13 +33,17 @@ func hasRecursive(nameMatchers []NameMatcher) bool {
 	return false
 }
 
-func createNameMatchers(pattern string) []NameMatcher {
+func createNameMatchers(pattern string) ([]NameMatcher, error) {
 	tokens := NormalizePattern(SplitPattern(pattern))
 	result := make([]NameMatcher, len(tokens)-1)
 	for i := range result {
-		result[i] = NewNameMatcher(tokens[i+1])
+		var err error
+		result[i], err = NewNameMatcher(tokens[i+1])
+		if err != nil {
+			return nil, err
+		}
 	}
-	return result
+	return result, nil
 }
 
 type AlwaysMatcher struct {
@@ -136,6 +143,13 @@ func (this RecursivePathMatcher) CreateChild(name string, dir bool) PathMatcher 
 func (this RecursivePathMatcher) Matched() bool {
 	return this.selfMatch
 }
+
+/*func (this RecursivePathMatcher) String() string {
+	indexes      []int
+	nameMatchers []NameMatcher
+	selfMatch    bool
+	return fmt.Sprintf("%s", this)
+}*/
 
 func recursiveMatched(nameMatchers []NameMatcher, indexes []int) bool {
 	if len(nameMatchers) > 0 && nameMatchers[len(nameMatchers)-1].Recursive() {

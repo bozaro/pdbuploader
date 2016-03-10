@@ -87,14 +87,15 @@ func TestPathMatcher(t *testing.T) {
 }
 
 func pathMatcherCheck(t *testing.T, v *pathMatcherData) {
-	matcher := NewPathMatcher(v.pattern)
+	matcher, err := NewPathMatcher(v.pattern)
+	assert.Nil(t, err, v.String())
 	for _, name := range SplitPattern(v.path) {
 		if matcher == nil {
 			break
 		}
 		isDir := strings.HasSuffix(name, "/")
 		if isDir {
-			name = name[1:]
+			name = name[:len(name)-1]
 		}
 		matcher = matcher.CreateChild(name, isDir)
 	}
@@ -106,7 +107,7 @@ func pathMatcherCheck(t *testing.T, v *pathMatcherData) {
 	} else {
 		actual = matchedPossible
 	}
-	assert.Equal(t, actual, v.expectedMatch, v.String())
+	assert.Equal(t, v.expectedMatch, actual, v.String())
 }
 
 type tryRemoveBackslashesData struct {
@@ -134,5 +135,5 @@ func TestTryRemoveBackslashes(t *testing.T) {
 
 func tryRemoveBackslashesCheck(t *testing.T, v *tryRemoveBackslashesData) {
 	actual := tryRemoveBackslashes(v.pattern)
-	assert.Equal(t, actual, v.expected, v.String())
+	assert.Equal(t, v.expected, actual, v.String())
 }
