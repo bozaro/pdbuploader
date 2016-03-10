@@ -1,6 +1,7 @@
 package wildcard
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -33,8 +34,29 @@ func NewNameMatcher(mask string) NameMatcher {
 }
 
 func maskToRegexp(mask string) *regexp.Regexp {
+	expr := ""
+	last := 0
+	for index, runeValue := range mask {
+		switch runeValue {
+		case '[', ']', '(', ')', '|', '-':
+			expr += regexp.QuoteMeta(mask[last:index])
+			expr += string(byte(runeValue))
+			last = index + 1
+		case '?':
+			expr += regexp.QuoteMeta(mask[last:index])
+			expr += "."
+			last = index + 1
+		case '*':
+			expr += regexp.QuoteMeta(mask[last:index])
+			expr += ".*"
+			last = index + 1
+		}
+	}
+	expr += regexp.QuoteMeta(mask[last:])
 	// todo: Mask to regexp
-	return nil
+	r, _ := regexp.Compile(expr)
+	fmt.Println("  mask: " + mask + " -> " + expr)
+	return r
 }
 
 func tryRemoveBackslashes(pattern string) string {
@@ -54,9 +76,7 @@ func tryRemoveBackslashes(pattern string) string {
 			return pattern
 		}
 		switch pattern[next+1] {
-		case ' ':
-		case '#':
-		case '!':
+		case ' ', '#', '!':
 			result += pattern[start:next]
 			start = next + 1
 			break
