@@ -86,21 +86,18 @@ func (this FileMaskMatcher) Matched() bool {
 type RecursivePathMatcher struct {
 	indexes      []int
 	nameMatchers []NameMatcher
-	selfMatch    bool
 }
 
 func newRecursivePathMatcher(nameMatchers []NameMatcher) RecursivePathMatcher {
 	return RecursivePathMatcher{
 		indexes:      []int{0},
 		nameMatchers: nameMatchers,
-		selfMatch:    recursiveMatched(nameMatchers, []int{0}),
 	}
 }
 
 func (this RecursivePathMatcher) CreateChild(name string, dir bool) PathMatcher {
 	childs := make([]int, len(this.indexes)*2)
 	changed := false
-	childMatch := false
 	count := 0
 	for _, index := range this.indexes {
 		if this.nameMatchers[index].Matched(name, dir) {
@@ -137,7 +134,6 @@ func (this RecursivePathMatcher) CreateChild(name string, dir bool) PathMatcher 
 		return RecursivePathMatcher{
 			nameMatchers: this.nameMatchers,
 			indexes:      childs[:count],
-			selfMatch:    childMatch,
 		}
 	} else {
 		return nil
@@ -145,24 +141,6 @@ func (this RecursivePathMatcher) CreateChild(name string, dir bool) PathMatcher 
 }
 
 func (this RecursivePathMatcher) Matched() bool {
-	return this.selfMatch
-}
-
-/*func (this RecursivePathMatcher) String() string {
-	indexes      []int
-	nameMatchers []NameMatcher
-	selfMatch    bool
-	return fmt.Sprintf("%s", this)
-}*/
-
-func recursiveMatched(nameMatchers []NameMatcher, indexes []int) bool {
-	if len(nameMatchers) > 0 && nameMatchers[len(nameMatchers)-1].Recursive() {
-		for _, index := range indexes {
-			if index == len(nameMatchers)-1 {
-				return true
-			}
-		}
-	}
 	return false
 }
 
