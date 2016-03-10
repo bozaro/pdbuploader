@@ -37,12 +37,8 @@ func NormalizePattern(tokens []string) []string {
 	// Copy array
 	tokens = append([]string(nil), tokens...)
 	// By default without slashes using mask for files in all subdirectories
-	if len(tokens) == 1 {
-		if tokens[0] == "/" {
-			tokens[0] = "**/"
-		} else {
-			tokens = []string{"**/", tokens[0]}
-		}
+	if len(tokens) == 1 && !strings.Contains(tokens[0], "/") {
+		tokens = []string{"**/", tokens[0]}
 	}
 	// Normalized pattern always starts with "/"
 	if len(tokens) == 0 || tokens[0] != "/" {

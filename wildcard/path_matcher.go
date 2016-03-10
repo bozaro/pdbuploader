@@ -14,7 +14,7 @@ func NewPathMatcher(pattern string) (PathMatcher, error) {
 		return AlwaysMatcher{}, nil
 	}
 	if hasRecursive(nameMatchers) {
-		if len(nameMatchers) == 2 && nameMatchers[0].Recursive() && !nameMatchers[1].Recursive() {
+		if len(nameMatchers) == 2 && nameMatchers[0].Recursive() {
 			return newFileMaskMatcher(nameMatchers[1]), nil
 		} else {
 			return newRecursivePathMatcher(nameMatchers), nil
@@ -72,11 +72,14 @@ func (this FileMaskMatcher) CreateChild(name string, dir bool) PathMatcher {
 	if this.matcher.Matched(name, dir) {
 		return &AlwaysMatcher{}
 	}
+	if !dir {
+		return nil
+	}
 	return this
 }
 
 func (this FileMaskMatcher) Matched() bool {
-	return true
+	return false
 }
 
 // Complex full-feature pattern matcher.
@@ -104,7 +107,7 @@ func (this RecursivePathMatcher) CreateChild(name string, dir bool) PathMatcher 
 			if this.nameMatchers[index].Recursive() {
 				childs[count] = index
 				count++
-				if index+1 < len(this.nameMatchers) && this.nameMatchers[index+1].Matched(name, dir) {
+				if this.nameMatchers[index+1].Matched(name, dir) {
 					if index+2 == len(this.nameMatchers) {
 						return AlwaysMatcher{}
 					}
@@ -115,8 +118,6 @@ func (this RecursivePathMatcher) CreateChild(name string, dir bool) PathMatcher 
 			} else {
 				if index+1 == len(this.nameMatchers) {
 					return AlwaysMatcher{}
-				} else if index+2 == len(this.nameMatchers) && this.nameMatchers[index+1].Recursive() {
-					childMatch = true
 				}
 				childs[count] = index + 1
 				count++
@@ -125,6 +126,9 @@ func (this RecursivePathMatcher) CreateChild(name string, dir bool) PathMatcher 
 		} else {
 			changed = true
 		}
+	}
+	if !dir {
+		return nil
 	}
 	if !changed {
 		return this
@@ -180,12 +184,14 @@ func (this SimplePathMatcher) CreateChild(name string, dir bool) PathMatcher {
 		if this.index+1 == len(this.nameMatchers) {
 			return AlwaysMatcher{}
 		}
-		return SimplePathMatcher{nameMatchers: this.nameMatchers,
-			index: this.index + 1}
+		return SimplePathMatcher{
+			nameMatchers: this.nameMatchers,
+			index:        this.index + 1,
+		}
 	}
 	return nil
 }
 
 func (this SimplePathMatcher) Matched() bool {
-	return true
+	return false
 }

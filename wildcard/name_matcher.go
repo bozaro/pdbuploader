@@ -113,11 +113,15 @@ type RecursiveMatcher struct {
 }
 
 func (this RecursiveMatcher) Matched(name string, dir bool) bool {
-	return dir
+	return true
 }
 
 func (this RecursiveMatcher) Recursive() bool {
 	return true
+}
+
+func (this RecursiveMatcher) String() string {
+	return "**"
 }
 
 // Simple matcher for mask with only one asterisk.

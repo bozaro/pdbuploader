@@ -23,7 +23,7 @@ func TestNormalizePattern(t *testing.T) {
 		normalizePatternData{"**", []string{}},
 		normalizePatternData{"**/", []string{}},
 		normalizePatternData{"foo", []string{"**/", "foo"}},
-		normalizePatternData{"foo/", []string{"**/", "foo/"}},
+		normalizePatternData{"foo/", []string{"foo/"}},
 		normalizePatternData{"/foo", []string{"foo"}},
 
 		// Convert path file mask
