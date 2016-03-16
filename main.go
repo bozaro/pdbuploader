@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/bozaro/pdbuploader/parse"
 	"github.com/bozaro/pdbuploader/uploader"
+	"github.com/bozaro/pdbuploader/wildcard"
 	"net/http"
 	"net/url"
 	"os"
@@ -141,11 +142,19 @@ func upload(reqFactory uploader.RequestFactory) {
 
 func main() {
 
+	wildcard.FindFiles(".", []string{
+		"**.go",
+		"/tmp/test/*.go",
+		"!foo.go",
+	}, false)
+
 	usernamePtr := flag.String("username", "bozaro", "Username")
 	passwordPtr := flag.String("password", "", "Password")
 	flag.Parse()
 
-	upload(uploader.NewBasicRequestFactory(*usernamePtr, *passwordPtr))
+	if *passwordPtr != "" {
+		upload(uploader.NewBasicRequestFactory(*usernamePtr, *passwordPtr))
+	}
 
 	file, _ := os.Open("sample/hello.exe")
 	{
