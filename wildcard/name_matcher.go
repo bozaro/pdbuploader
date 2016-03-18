@@ -9,6 +9,7 @@ import (
 type NameMatcher interface {
 	Matched(name string, dir bool) bool
 	Recursive() bool
+	ExactName() *string
 }
 
 type maskType int
@@ -120,6 +121,10 @@ func (this RecursiveMatcher) Recursive() bool {
 	return true
 }
 
+func (this RecursiveMatcher) ExactName() *string {
+	return nil
+}
+
 func (this RecursiveMatcher) String() string {
 	return "**"
 }
@@ -142,6 +147,10 @@ func (this SimpleMatcher) Recursive() bool {
 	return false
 }
 
+func (this SimpleMatcher) ExactName() *string {
+	return nil
+}
+
 func (this SimpleMatcher) String() string {
 	return fmt.Sprintf("equals(%s, %s, %s)", this.prefix, this.suffix, this.dirOnly)
 }
@@ -160,6 +169,10 @@ func (this EqualsMatcher) Recursive() bool {
 	return false
 }
 
+func (this EqualsMatcher) ExactName() *string {
+	return &this.name
+}
+
 func (this EqualsMatcher) String() string {
 	return fmt.Sprintf("equals(%s, %s)", this.name, this.dirOnly)
 }
@@ -176,6 +189,10 @@ func (this ComplexMatcher) Matched(name string, dir bool) bool {
 
 func (this ComplexMatcher) Recursive() bool {
 	return false
+}
+
+func (this ComplexMatcher) ExactName() *string {
+	return nil
 }
 
 func (this ComplexMatcher) String() string {

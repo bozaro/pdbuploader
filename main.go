@@ -146,7 +146,7 @@ func main() {
 		"**.go",
 		"/tmp/test/*.go",
 		"!foo.go",
-	}, false)
+	}, nil)
 
 	usernamePtr := flag.String("username", "bozaro", "Username")
 	passwordPtr := flag.String("password", "", "Password")
