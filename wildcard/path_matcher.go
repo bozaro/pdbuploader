@@ -3,6 +3,7 @@ package wildcard
 type PathMatcher interface {
 	CreateChild(name string, dir bool) PathMatcher
 	Matched() bool
+	ExactNames() *[]string
 }
 
 func NewPathMatcher(pattern string) (PathMatcher, error) {
@@ -57,6 +58,10 @@ func (this AlwaysMatcher) Matched() bool {
 	return true
 }
 
+func (this AlwaysMatcher) ExactNames() *[]string {
+	return nil
+}
+
 // Complex full-feature pattern matcher.
 type FileMaskMatcher struct {
 	matcher NameMatcher
@@ -80,6 +85,15 @@ func (this FileMaskMatcher) CreateChild(name string, dir bool) PathMatcher {
 
 func (this FileMaskMatcher) Matched() bool {
 	return false
+}
+
+func (this FileMaskMatcher) ExactNames() *[]string {
+	var result *[]string = nil
+	name := this.matcher.ExactName()
+	if name != nil {
+		result = &[]string{*name}
+	}
+	return result
 }
 
 // Complex full-feature pattern matcher.
@@ -144,6 +158,18 @@ func (this RecursivePathMatcher) Matched() bool {
 	return false
 }
 
+func (this RecursivePathMatcher) ExactNames() *[]string {
+	result := make([]string, 0)
+	for _, index := range this.indexes {
+		name := this.nameMatchers[index].ExactName()
+		if name == nil {
+			return nil
+		}
+		result = append(result, *name)
+	}
+	return &result
+}
+
 // Matcher for patterns without "**".
 type SimplePathMatcher struct {
 	index        int
@@ -172,4 +198,13 @@ func (this SimplePathMatcher) CreateChild(name string, dir bool) PathMatcher {
 
 func (this SimplePathMatcher) Matched() bool {
 	return false
+}
+
+func (this SimplePathMatcher) ExactNames() *[]string {
+	var result *[]string = nil
+	name := this.nameMatchers[this.index].ExactName()
+	if name != nil {
+		result = &[]string{*name}
+	}
+	return result
 }

@@ -144,6 +144,7 @@ func main() {
 
 	wildcard.FindFiles(".", []string{
 		"**.go",
+		"!.*",
 		"/tmp/test/*.go",
 		"!foo.go",
 	}, nil)
