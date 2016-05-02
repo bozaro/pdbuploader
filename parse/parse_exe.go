@@ -1,5 +1,7 @@
 package parse
 
+// https://msdn.microsoft.com/en-us/windows/hardware/gg463119.aspx
+
 import (
 	"encoding/binary"
 	"errors"
@@ -12,6 +14,9 @@ const (
 	rsdsHeaderSignature         int32 = 0x53445352
 	IMAGE_DIRECTORY_ENTRY_DEBUG int32 = 6
 	IMAGE_DEBUG_TYPE_CODEVIEW   int32 = 2
+
+	COFF_PE32_32 int16 = 0x010B
+	COFF_PE32_64 int16 = 0x020B
 )
 
 type mzHeader struct {
@@ -25,37 +30,73 @@ type rvaAndSize struct {
 	VirtualSize    int32
 }
 
-type peHeader struct {
-	Signature                   int32      // 0x00-0x04 peHeaderSignature
-	Machine                     int16      // 0x04-0x06
-	NumberOfSections            int16      // 0x06-0x08
-	TimeDateStamp               int32      // 0x08-0x0C
-	PointerToSymbolTable        int32      // 0x0C-0x10
-	NumberOfSymbolTable         int32      // 0x10-0x14
-	SizeOfOptionalHeader        int16      // 0x14-0x16
-	Characteristics             int16      // 0x16-0x18
-	StandadCOFFFields           [0x1C]byte // 0x18-0x34
-	ImageBase                   int32      // 0x34-0x38
-	SectionAlignment            int32      // 0x38-0x3C
-	FileAlignment               int32      // 0x3C-0x40
-	MajorOperatingSystemVersion int16      // 0x40-0x42
-	MinorOperatingSystemVersion int16      // 0x40-0x42
-	MajorImageVersion           int16      // 0x42-0x44
-	MinorImageVersion           int16      // 0x44-0x46
-	MajorSubsystemVersion       int16      // 0x46-0x48
-	MinorSubsystemVersion       int16      // 0x48-0x4A
-	Win32VersionValue           int32      // 0x4A-0x50
-	SizeOfImage                 int32      // 0x50-0x54
-	SizeOfHeaders               int32      // 0x54-0x58
-	CheckSum                    int32      // 0x58-0x5C
-	Subsystem                   int16      // 0x5C-0x5E
-	DllCharacteristics          int16      // 0x5E-0x60
-	SizeOfStackReserve          int32      // 0x60-0x64
-	SizeOfStackCommit           int32      // 0x64-0x68
-	SizeOfHeapReserve           int32      // 0x68-0x6C
-	SizeOfHeapCommit            int32      // 0x6C-0x70
-	LoaderFlags                 int32      // 0x70-0x74
-	NumberOfRvaAndSizes         int32      // 0x74-0x78
+type coffHeader struct {
+	Machine              uint16 // 0x04-0x06
+	NumberOfSections     int16  // 0x06-0x08
+	TimeDateStamp        int32  // 0x08-0x0C
+	PointerToSymbolTable int32  // 0x0C-0x10
+	NumberOfSymbolTable  int32  // 0x10-0x14
+	SizeOfOptionalHeader int16  // 0x14-0x16
+	Characteristics      int16  // 0x16-0x18
+
+	// Optional Header Standard Fields
+	Magic                   int16 // 0x18-0x1A
+	MajorLinkerVersion      int8  // 0x1A-0x1B
+	MinorLinkerVersion      int8  // 0x1B-0x1C
+	SizeOfCode              int32 // 0x1C-0x20
+	SizeOfInitializedData   int32 // 0x20-0x24
+	SizeOfUninitializedData int32 // 0x24-0x28
+	AddressOfEntryPoint     int32 // 0x28-0x2C
+	BaseOfCode              int32 // 0x2C-0x30
+}
+
+type peHeader32 struct {
+	BaseOfData                  int32 // 0x30-0x34
+	ImageBase                   int32 // 0x34-0x38
+	SectionAlignment            int32 // 0x38-0x3C
+	FileAlignment               int32 // 0x3C-0x40
+	MajorOperatingSystemVersion int16 // 0x40-0x42
+	MinorOperatingSystemVersion int16 // 0x40-0x42
+	MajorImageVersion           int16 // 0x42-0x44
+	MinorImageVersion           int16 // 0x44-0x46
+	MajorSubsystemVersion       int16 // 0x46-0x48
+	MinorSubsystemVersion       int16 // 0x48-0x4A
+	Win32VersionValue           int32 // 0x4A-0x50
+	SizeOfImage                 int32 // 0x50-0x54
+	SizeOfHeaders               int32 // 0x54-0x58
+	CheckSum                    int32 // 0x58-0x5C
+	Subsystem                   int16 // 0x5C-0x5E
+	DllCharacteristics          int16 // 0x5E-0x60
+	SizeOfStackReserve          int32 // 0x60-0x64
+	SizeOfStackCommit           int32 // 0x64-0x68
+	SizeOfHeapReserve           int32 // 0x68-0x6C
+	SizeOfHeapCommit            int32 // 0x6C-0x70
+	LoaderFlags                 int32 // 0x70-0x74
+	NumberOfRvaAndSizes         int32 // 0x74-0x78
+}
+
+type peHeader64 struct {
+	ImageBase                   int64 // 0x30-0x38
+	SectionAlignment            int32 // 0x38-0x3C
+	FileAlignment               int32 // 0x3C-0x40
+	MajorOperatingSystemVersion int16 // 0x40-0x42
+	MinorOperatingSystemVersion int16 // 0x40-0x42
+	MajorImageVersion           int16 // 0x42-0x44
+	MinorImageVersion           int16 // 0x44-0x46
+	MajorSubsystemVersion       int16 // 0x46-0x48
+	MinorSubsystemVersion       int16 // 0x48-0x4A
+	Win32VersionValue           int32 // 0x4A-0x50
+	SizeOfImage                 int32 // 0x50-0x54
+	SizeOfHeaders               int32 // 0x54-0x58
+	CheckSum                    int32 // 0x58-0x5C
+	Subsystem                   int16 // 0x5C-0x5E
+	DllCharacteristics          int16 // 0x5E-0x60
+	SizeOfStackReserve          int64 // 0x60-0x68
+	SizeOfStackCommit           int64 // 0x68-0x70
+	SizeOfHeapReserve           int64 // 0x70-0x78
+	SizeOfHeapCommit            int64 // 0x78-0x80
+	LoaderFlags                 int32 // 0x80-0x84
+	NumberOfRvaAndSizes         int32 // 0x84-0x88
 }
 
 type peSection struct {
@@ -102,17 +143,42 @@ func ParseExe(file *os.File) (*DebugInfo, error) {
 	if _, err := file.Seek(int64(mz.PEOffset), 0); err != nil {
 		return nil, err
 	}
-	// Read PE header
-	var pe peHeader
-	if err := binary.Read(file, binary.LittleEndian, &pe); err != nil {
+	// Read PE signature
+	var peSignature int32
+	if err := binary.Read(file, binary.LittleEndian, &peSignature); err != nil {
 		return nil, err
 	}
-	if pe.Signature != peHeaderSignature {
+	if peSignature != peHeaderSignature {
 		return nil, errors.New("Invalid PE header signature")
 	}
-
-	if pe.NumberOfRvaAndSizes < IMAGE_DIRECTORY_ENTRY_DEBUG {
-		return nil, errors.New("Debug information not found in RVA table")
+	// Read COFF header
+	var coff coffHeader
+	if err := binary.Read(file, binary.LittleEndian, &coff); err != nil {
+		return nil, err
+	}
+	// Read platform specific COFF header
+	var sizeOfImage int32
+	switch coff.Magic {
+	case COFF_PE32_32:
+		var pe peHeader32
+		if err := binary.Read(file, binary.LittleEndian, &pe); err != nil {
+			return nil, err
+		}
+		if pe.NumberOfRvaAndSizes < IMAGE_DIRECTORY_ENTRY_DEBUG {
+			return nil, errors.New("Debug information not found in RVA table")
+		}
+		sizeOfImage = pe.SizeOfImage
+	case COFF_PE32_64:
+		var pe peHeader64
+		if err := binary.Read(file, binary.LittleEndian, &pe); err != nil {
+			return nil, err
+		}
+		if pe.NumberOfRvaAndSizes < IMAGE_DIRECTORY_ENTRY_DEBUG {
+			return nil, errors.New("Debug information not found in RVA table")
+		}
+		sizeOfImage = pe.SizeOfImage
+	default:
+		return nil, errors.New("Unsupported COFF-header format")
 	}
 	// Skip RVA entries before IMAGE_DIRECTORY_ENTRY_DEBUG
 	for i := int32(0); i < IMAGE_DIRECTORY_ENTRY_DEBUG; i++ {
@@ -128,12 +194,12 @@ func ParseExe(file *os.File) (*DebugInfo, error) {
 	}
 
 	// Seek to PE sections after PE header
-	if _, err := file.Seek(int64(mz.PEOffset)+int64(pe.SizeOfOptionalHeader)+0x18, 0); err != nil {
+	if _, err := file.Seek(int64(mz.PEOffset)+int64(coff.SizeOfOptionalHeader)+0x18, 0); err != nil {
 		return nil, err
 	}
 	// Find file offset for IMAGE_DEBUG_DIRECTORY
 	debug_dir_offest := int64(0)
-	for i := int16(0); i < pe.NumberOfSections; i++ {
+	for i := int16(0); i < coff.NumberOfSections; i++ {
 		var section peSection
 		binary.Read(file, binary.LittleEndian, &section)
 		if (section.VirtualAddress <= debug_rva.VirtualAddress) && (section.VirtualAddress+section.VirtualSize > debug_rva.VirtualAddress) {
@@ -180,8 +246,8 @@ func ParseExe(file *os.File) (*DebugInfo, error) {
 
 	return &DebugInfo{
 		CodeId{
-			pe.TimeDateStamp,
-			pe.SizeOfImage,
+			coff.TimeDateStamp,
+			sizeOfImage,
 		},
 		DebugId{
 			Guid{

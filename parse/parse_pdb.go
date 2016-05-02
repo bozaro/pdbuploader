@@ -58,32 +58,29 @@ func ParsePdb(file *os.File) (*DebugId, error) {
 	if _, err := file.Seek(int64(stream_count)*int64(binary.Size(&size)), 1); err != nil {
 		return nil, err
 	}
-	// Skip first stream offset
-	var offset int32
-	if _, err := file.Seek(int64(1)*int64(binary.Size(&offset)), 1); err != nil {
-		return nil, err
-	}
-	// Read second stream offset
-	var stream_offset int32
+	// Read stream offsets
+	stream_offset := make([]int32, stream_count)
 	if err := binary.Read(file, binary.LittleEndian, &stream_offset); err != nil {
 		return nil, err
 	}
-	// Seek to second stream with PDB debug information
-	if _, err := file.Seek(int64(stream_offset)*int64(pdb.PageSize), 0); err != nil {
-		return nil, err
+	for _, offset := range stream_offset {
+		// Seek to second stream with PDB debug information
+		if _, err := file.Seek(int64(offset)*int64(pdb.PageSize), 0); err != nil {
+			return nil, err
+		}
+		// Read PDB debug information
+		var auth pdbAuthStream
+		if err := binary.Read(file, binary.LittleEndian, &auth); err != nil {
+			return nil, err
+		}
+		if auth.Signature == pdbAuthStreamSignature {
+			return &DebugId{
+				Guid{
+					auth.Guid,
+				},
+				int(auth.TimeDateStamp),
+			}, nil
+		}
 	}
-	// Read PDB debug information
-	var auth pdbAuthStream
-	if err := binary.Read(file, binary.LittleEndian, &auth); err != nil {
-		return nil, err
-	}
-	if auth.Signature != pdbAuthStreamSignature {
-		return nil, errors.New("Invalid PDB auth stream signature")
-	}
-	return &DebugId{
-		Guid{
-			auth.Guid,
-		},
-		int(auth.TimeDateStamp),
-	}, nil
+	return nil, errors.New("Can't find PDB auth stream")
 }
